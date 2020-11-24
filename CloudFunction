@@ -64,7 +64,7 @@ def Pull(i):
     subscriber = pubsub.SubscriberClient()
     SUBSCRIPTION_1 = "InputSubscription1"
     SUBSCRIPTION_2 = "InputSubscription2"
-    project_id = 'prime-hour-282318'
+    project_id = 
     topic_id = 'Incoming_Messages'
     subscription_path_1 = subscriber.subscription_path(project_id, SUBSCRIPTION_1)
     subscription_path_2 = subscriber.subscription_path(project_id, SUBSCRIPTION_2)
