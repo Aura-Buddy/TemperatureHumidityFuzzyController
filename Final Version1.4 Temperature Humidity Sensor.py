@@ -27,7 +27,7 @@ def callback(message):
     
 def acknowledgeMessages():
     subscriber = pubsub.SubscriberClient()
-    project = "prime-hour-282318"
+    project = 
     subscription1 = "OutputSubscription1"
     subscription2 = "OutputSubscription2"
     subscription3 = "InputSubscription1"
@@ -65,7 +65,7 @@ def serialRead():
 def Pull(i):
     Foundflag = 0
     subscriber = pubsub.SubscriberClient()
-    project = "prime-hour-282318"
+    project = 
     subscription1 = "OutputSubscription1"
     subscription2 = "OutputSubscription2"
     topic = "OutGoing_Messages"
