@@ -1,0 +1,118 @@
+from google.cloud import pubsub
+import pybase64
+import requests
+import time
+import numpy as np
+import skfuzzy as fuzz
+
+def delay(Time):
+    while(time.localtime().tm_sec != Time):
+        time.sleep(1)
+
+def FuzzyController(T, H):
+
+    #Set ranges for temperature, humidity and fan
+    temperature = np.arange(0,101,1)
+    humidity = np.arange(0,101,1)
+    fan = np.arange(0,101,1)
+
+    #Generate fuzzy membership functions for temperature
+    low_temp = fuzz.trapmf(temperature, [0,0,5,20])
+    high_temp = fuzz.trapmf(temperature, [20,60,100,100])
+
+    #Generature fuzzy membership functions for humidity
+    low_humidity = fuzz.trapmf(humidity, [0,0,15,45])
+    high_humidity = fuzz.trapmf(humidity, [45,80,100, 100])
+
+    #Generate fuzzy membership functions for fan
+    low_fan = fuzz.trapmf(fan, [0, 0, 15, 50])
+    high_fan = fuzz.trapmf(fan, [50, 85, 100, 100])
+
+    low_humidity_level = fuzz.interp_membership(humidity, low_humidity, H)
+    high_humidity_level = fuzz.interp_membership(humidity, high_humidity, H)
+    low_temp_level = fuzz.interp_membership(temperature, low_temp, T)
+    high_temp_level = fuzz.interp_membership(temperature, high_temp, T)
+
+    """
+    Establishing rules:
+    Rule 1: IF its LOW temperature AND HIGH humidity THEN turn fan on high
+    Rule 2: IF its HIGH temperature AND LOW humidity THEN turn fan on high
+    """
+    
+    Rule1 = np.fmin(low_temp_level, high_humidity_level)
+    Rule2 = np.fmin(high_temp_level, low_humidity_level)
+
+    #Find the output as it correlates to the membership functions low and high fan
+    fan_activation_low = np.fmin(Rule1, low_fan)
+    fan_activation_high = np.fmin(Rule2, high_fan)
+    fan0 = np.zeros_like(fan)
+    
+    try:
+        aggregated = np.fmax(fan_activation_low, fan_activation_high)
+
+        # Calculate defuzzified result
+        output = fuzz.defuzz(fan, aggregated, 'centroid')
+        output_activation = fuzz.interp_membership(fan, aggregated, output)  # for plot
+
+    except AssertionError:
+        output_activation = 0.0
+
+    return output_activation
+
+def Pull(i):
+    Foundflag = 0
+    subscriber = pubsub.SubscriberClient()
+    SUBSCRIPTION_1 = "InputSubscription1"
+    SUBSCRIPTION_2 = "InputSubscription2"
+    project_id = 'prime-hour-282318'
+    topic_id = 'Incoming_Messages'
+    subscription_path_1 = subscriber.subscription_path(project_id, SUBSCRIPTION_1)
+    subscription_path_2 = subscriber.subscription_path(project_id, SUBSCRIPTION_2)
+     
+    pulled_messages_sub1 = subscriber.pull(subscription_path_1, max_messages = 10)
+    pulled_messages_sub2 = subscriber.pull(subscription_path_2, max_messages = 10)
+    for msg in pulled_messages_sub1.received_messages:
+        message = msg.message.data
+        decoded_message = pybase64.b64decode(message.decode('utf-8')).decode('utf-8')
+        tempPhrase, humiPhrase, tagPhrase = decoded_message.split(',')
+        tagString, tagValue = tagPhrase.split(":")
+        if tagValue == str(i):
+            tempString, tempValue = tempPhrase.split(":")
+            humiString, humiValue = humiPhrase.split(":")
+            Foundflag = 1
+            return tempValue, humiValue
+    if Foundflag == 0:
+        for msg in pulled_messages_sub2.received_messages:
+            message = msg.message.data
+            decoded_message = pybase64.b64decode(message.decode('utf-8')).decode('utf-8')
+            tempPhrase, humiPhrase, tagPhrase = decoded_message.split(',')
+            tagString, tagValue = tagPhrase.split(":")
+            if tagValue == str(i):
+                tempString, tempValue = tempPhrase.split(":")
+                humiString, humiValue = humiPhrase.split(":")
+                Foundflag = 1
+                return tempValue, humiValue
+        i = i - 1
+        print("Did not find the most recent message, rePulling for second most recent")
+        tempValue,humiValue = Pull(i)
+        return tempValue,humiValue
+
+def postMessage(message):
+    publisher = pubsub.PublisherClient()
+    project_id = 'prime-hour-282318'
+    topic_id = "OutGoing_Messages"
+    topic_path = publisher.topic_path(project_id, topic_id)
+    publisher.publish(topic_path, message)
+    print("Message posted")
+
+def main(request):
+    for i in range (9):
+        delay(10)
+        tag = str(i)
+        temperature_value, humidity_value = Pull(i)
+        Fan_value = str(FuzzyController(eval(temperature_value),eval(humidity_value)))
+        Outgoing_message = "Fan Output:{},tag:{}".format(Fan_value,tag)
+        encoded_Fan_value = pybase64.b64encode(Outgoing_message.encode('utf-8'))
+        delay(20)        
+        postMessage(encoded_Fan_value)
+    return encoded_Fan_value
